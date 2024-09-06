@@ -15,6 +15,10 @@ local function log(level, message)
 	end
 end
 
+local function get_workspace_dir()
+	return vim.fn.getcwd()
+end
+
 local function setup_adapter(dap)
 	dap.adapters.ruby = function(callback, config)
 		local port = config.port or M.config.port
@@ -34,7 +38,9 @@ local function setup_adapter(dap)
 			opts.executable = nil
 		end
 
+		log("debug", "Workspace directory: " .. get_workspace_dir())
 		log("debug", "Adapter options: " .. vim.inspect(opts))
+
 		callback(opts)
 	end
 end
@@ -46,7 +52,7 @@ local function setup_configuration(dap)
 			name = "Debug current file",
 			request = "launch",
 			program = "${file}",
-			cwd = "${workspaceFolder}",
+			cwd = get_workspace_dir,
 		},
 		{
 			type = "ruby",
@@ -54,15 +60,15 @@ local function setup_configuration(dap)
 			request = "attach",
 			remoteHost = M.config.host,
 			remotePort = M.config.port,
-			cwd = "${workspaceFolder}",
+			cwd = get_workspace_dir,
 		},
 		{
 			type = "ruby",
 			name = "Debug Rails server",
 			request = "launch",
 			program = "bin/rails",
-			programArgs = { "server" },
-			cwd = "${workspaceFolder}",
+			args = { "server" },
+			cwd = get_workspace_dir,
 		},
 	}
 end
