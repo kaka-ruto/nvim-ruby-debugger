@@ -1,10 +1,15 @@
 local M = {}
 
 M.config = {
-	port = 3001,
+	default_port = 38698, -- Default port used by rdbg
 	host = "127.0.0.1",
-	debugger_cmd = { "bundle", "exec", "rdbg", "-n", "--open", "--port", "${port}", "--host", "${host}" },
 	log_level = "info",
+	debugger_cmd = { "bundle", "exec", "rdbg" },
+	debuginfod = false, -- Enable debuginfod support
+	rdbg_options = {
+		"--no-sigint-hook", -- Recommended for use with Neovim
+		"--no-use-script-lines", -- Improves performance
+	},
 }
 
 local function log(level, message)
@@ -17,19 +22,28 @@ local function log(level, message)
 end
 
 local function setup_adapter(dap)
-	dap.adapters.ruby = {
-		type = "executable",
-		command = "bundle",
-		args = function()
-			local args = vim.deepcopy(M.config.debugger_cmd)
-			table.remove(args, 1) -- Remove 'bundle'
-			table.remove(args, 1) -- Remove 'exec'
-			for i, arg in ipairs(args) do
-				args[i] = arg:gsub("${port}", tostring(M.config.port)):gsub("${host}", M.config.host)
-			end
-			return args
-		end,
-	}
+	dap.adapters.ruby = function(callback, config)
+		local port = config.port or M.config.default_port
+		local args = vim.list_extend(vim.deepcopy(M.config.debugger_cmd), { "-n", "--open", "--port", tostring(port) })
+		vim.list_extend(args, M.config.rdbg_options)
+		if M.config.debuginfod then
+			table.insert(args, "--debuginfod")
+		end
+		if config.command and config.script then
+			vim.list_extend(args, { "-c", "--", "bundle", "exec", config.command, config.script })
+		end
+
+		callback({
+			type = "server",
+			host = M.config.host,
+			port = port,
+			executable = {
+				command = args[1],
+				args = vim.list_slice(args, 2),
+			},
+		})
+	end
+	log("debug", "Ruby adapter setup complete")
 end
 
 local function setup_configuration(dap)
@@ -37,19 +51,37 @@ local function setup_configuration(dap)
 		{
 			type = "ruby",
 			name = "Debug current file",
-			request = "launch",
-			program = "${file}",
-			cwd = "${workspaceFolder}",
+			request = "attach",
+			localfs = true,
+			command = "ruby",
+			script = "${file}",
 		},
 		{
 			type = "ruby",
-			name = "Attach to Rails",
+			name = "Run current spec file",
 			request = "attach",
-			remoteHost = M.config.host,
-			remotePort = M.config.port,
-			remoteWorkspaceRoot = "${workspaceFolder}",
+			localfs = true,
+			command = "rspec",
+			script = "${file}",
+		},
+		{
+			type = "ruby",
+			name = "Debug Rails",
+			request = "attach",
+			localfs = true,
+			command = "rails",
+			script = "server",
+		},
+		{
+			type = "ruby",
+			name = "Attach to existing process",
+			request = "attach",
+			pid = function()
+				return vim.fn.input("PID: ")
+			end,
 		},
 	}
+	log("debug", "Ruby configurations setup complete")
 end
 
 function M.setup(user_config)
@@ -65,6 +97,7 @@ function M.setup(user_config)
 	setup_configuration(dap)
 
 	log("info", "Ruby debug setup complete")
+	log("debug", "Final configuration: " .. vim.inspect(M.config))
 end
 
 return M
