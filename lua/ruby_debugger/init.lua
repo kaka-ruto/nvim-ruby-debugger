@@ -12,52 +12,69 @@ local function log(level, message)
 		vim.fn.index({ "error", "warn", "info", "debug" }, level)
 		>= vim.fn.index({ "error", "warn", "info", "debug" }, M.config.log_level)
 	then
-		vim.notify(string.format("[ruby-debug] %s: %s", level:upper(), message), vim.log.levels[level:upper()])
+		vim.notify(string.format("[ruby-debugger] %s: %s", level:upper(), message), vim.log.levels[level:upper()])
 	end
 end
 
 local function setup_adapter(dap)
 	dap.adapters.ruby = function(callback, config)
-		local stdout = vim.loop.new_pipe(false)
-		local handle
-		local pid_or_err
 		local port = config.port or M.config.port
 		local host = config.host or M.config.host
 		local debugger_cmd = config.debugger_cmd or M.config.debugger_cmd
 
 		debugger_cmd = debugger_cmd:gsub("${port}", tostring(port)):gsub("${host}", host)
 
-		local opts = {
-			stdio = { nil, stdout },
+		local stdout = vim.loop.new_pipe(false)
+		local stderr = vim.loop.new_pipe(false)
+
+		local handle, pid_or_err
+		local options = {
+			stdio = { nil, stdout, stderr },
 			args = {},
 			detached = true,
 		}
 
-		handle, pid_or_err = vim.loop.spawn("sh", opts, function(code)
+		handle, pid_or_err = vim.loop.spawn("sh", options, function(code)
 			stdout:close()
+			stderr:close()
 			handle:close()
 			if code ~= 0 then
-				log("error", string.format("ruby debugger exited with code %d", code))
+				print("ruby debugger exited with code", code)
 			end
 		end)
 
-		assert(handle, "Error running ruby debugger: " .. tostring(pid_or_err))
+		if not handle then
+			print("Error running ruby debugger:", pid_or_err)
+			return
+		end
 
-		stdout:read_start(function(err, chunk)
+		vim.loop.read_start(stdout, function(err, chunk)
 			assert(not err, err)
 			if chunk then
-				log("debug", chunk)
+				vim.schedule(function()
+					require("dap.repl").append(chunk)
+				end)
 			end
 		end)
 
+		vim.loop.read_start(stderr, function(err, chunk)
+			assert(not err, err)
+			if chunk then
+				vim.schedule(function()
+					require("dap.repl").append(chunk)
+				end)
+			end
+		end)
+
+		-- Write the command to the shell's stdin
 		vim.loop.write(handle, debugger_cmd .. "\n")
 
 		-- Wait for debugger to start
 		vim.defer_fn(function()
 			callback({ type = "server", host = host, port = port })
-		end, 1000)
+		end, 2000)
 
-		log("info", string.format("Ruby debugger started on %s:%d", host, port))
+		print("Ruby debugger started on " .. host .. ":" .. port)
 	end
 end
 
