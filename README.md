@@ -14,7 +14,7 @@ In your Neovim configuration:
 require('ruby_debugger').setup({
 port = 3001,
 host = '127.0.0.1',
-debugger_cmd = 'bundle exec rdbg -n --open --port ${port} --host ${host} -- bin/rails server -p 3000',
+debugger_cmd = 'undle exec rdbg -n --open --port ${port} --host ${host}',
 log_level = 'info',
 })
 
