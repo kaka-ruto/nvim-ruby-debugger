@@ -1,7 +1,8 @@
 local M = {}
 
 M.options = {
-	port = 38698,
+	rails_port = 38698,
+	worker_port = 38699,
 	host = "127.0.0.1",
 }
 

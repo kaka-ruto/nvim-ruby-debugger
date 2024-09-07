@@ -1,54 +1,118 @@
 local M = {}
 
 function M.setup(opts)
-	-- Load and setup configurations
 	local config = require("nvim-ruby-debugger.config")
 	config.setup(opts)
 
-	-- Setup DAP
-	local status_dap, dap = pcall(require, "dap")
-	if not status_dap then
-		vim.notify("nvim-dap is not installed", vim.log.levels.ERROR)
-		return
-	end
-
-	-- Setup DAP UI
-	local status_dapui, dapui = pcall(require, "dapui")
-	if not status_dapui then
-		vim.notify("nvim-dap-ui is not installed", vim.log.levels.ERROR)
-		return
-	end
-
-	-- Setup DAP Virtual Text
-	local status_dap_virtual_text, dap_virtual_text = pcall(require, "nvim-dap-virtual-text")
-	if not status_dap_virtual_text then
-		vim.notify("nvim-dap-virtual-text is not installed", vim.log.levels.ERROR)
-		return
-	end
-
-	-- Configure DAP
-	dap.adapters.ruby = function(callback, conf)
-		callback({
-			type = "server",
-			host = conf.host or config.options.host,
-			port = conf.port or config.options.port,
-		})
-	end
+	local dap = require("dap")
+	local dapui = require("dapui")
+	local dap_virtual_text = require("nvim-dap-virtual-text")
 
 	dap.configurations.ruby = {
 		{
 			type = "ruby",
 			name = "Rails server",
 			request = "attach",
-			port = config.options.port,
+			port = config.options.rails_port,
 			server = config.options.host,
 			options = {
 				source_filetype = "ruby",
 			},
 			cwd = config.get_rails_root,
-			remoteWorkspaceRoot = config.get_rails_root,
+			localfs = true,
+		},
+		{
+			type = "ruby",
+			name = "Solid Queue Worker",
+			request = "attach",
+			command = "bundle",
+			commandArgs = {
+				"exec",
+				"rdbg",
+				"-n",
+				"--open",
+				"--port",
+				tostring(config.options.worker_port),
+				"-c",
+				"--",
+				"bin/jobs",
+				"start",
+			},
+			port = config.options.worker_port,
+			server = config.options.host,
+			options = {
+				source_filetype = "ruby",
+			},
+			cwd = config.get_rails_root,
+			localfs = true,
+			waiting = 1000,
 		},
 	}
+
+	dap.adapters.ruby = function(callback, config)
+		if config.request == "attach" and config.command then
+			local handle
+			local pid_or_err
+			local stdout = vim.loop.new_pipe(false)
+			local stderr = vim.loop.new_pipe(false)
+
+			handle, pid_or_err = vim.loop.spawn(config.command, {
+				args = config.commandArgs,
+				cwd = config.cwd,
+				stdio = { nil, stdout, stderr },
+				detached = true,
+			}, function(code)
+				stdout:close()
+				stderr:close()
+				handle:close()
+				if code ~= 0 then
+					print("rdbg exited with code", code)
+				end
+			end)
+
+			if not handle then
+				error("Unable to spawn rdbg: " .. tostring(pid_or_err))
+			end
+
+			vim.loop.read_start(stdout, function(err, data)
+				assert(not err, err)
+				if data then
+					print("rdbg stdout: " .. data)
+				end
+			end)
+
+			vim.loop.read_start(stderr, function(err, data)
+				assert(not err, err)
+				if data then
+					print("rdbg stderr: " .. data)
+				end
+			end)
+
+			vim.defer_fn(function()
+				callback({
+					type = "server",
+					host = config.server,
+					port = config.port,
+				})
+			end, config.waiting or 1000)
+		else
+			callback({
+				type = "server",
+				host = config.server,
+				port = config.port,
+			})
+		end
+	end
+
+	-- Command to debug Rails server
+	vim.api.nvim_create_user_command("DebugRailsServer", function()
+		dap.run(dap.configurations.ruby[1])
+	end, {})
+
+	-- Command to debug Solid Queue worker
+	vim.api.nvim_create_user_command("DebugSolidQueueWorker", function()
+		dap.run(dap.configurations.ruby[2])
+	end, {})
 
 	-- Configure DAP UI
 	dapui.setup()
@@ -80,11 +144,6 @@ function M.setup(opts)
 	dap.listeners.before.event_exited["dapui_config"] = function()
 		dapui.close()
 	end
-
-	-- Setup commands
-	vim.api.nvim_create_user_command("RubyDebugConnect", function()
-		dap.continue()
-	end, {})
 
 	-- Setup keymaps
 	config.setup_keymaps()
