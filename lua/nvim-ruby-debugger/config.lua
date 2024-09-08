@@ -3,6 +3,7 @@ local M = {}
 M.options = {
 	rails_port = 38698,
 	worker_port = 38699,
+	minitest_port = 38700,
 	host = "127.0.0.1",
 }
 
@@ -46,6 +47,13 @@ function M.setup_keymaps()
 	vim.keymap.set("n", "<Leader>dr", function()
 		require("dap").repl.open()
 	end)
+	vim.keymap.set("n", "<Leader>dtf", function()
+		vim.cmd("DebugMinitestFile")
+	end, { desc = "Debug Minitest File" })
+
+	vim.keymap.set("n", "<Leader>dtl", function()
+		vim.cmd("DebugMinitestLine")
+	end, { desc = "Debug Minitest Line" })
 end
 
 return M

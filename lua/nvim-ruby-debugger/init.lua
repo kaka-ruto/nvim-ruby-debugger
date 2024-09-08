@@ -8,6 +8,53 @@ function M.setup(opts)
 	local dapui = require("dapui")
 	local dap_virtual_text = require("nvim-dap-virtual-text")
 
+	local function get_test_command(file, line)
+		local cmd = {}
+
+		if line then
+			table.insert(cmd, file .. ":" .. line)
+		else
+			table.insert(cmd, file)
+		end
+
+		return cmd
+	end
+
+	local function create_minitest_config(name, get_args)
+		return {
+			type = "ruby",
+			name = name,
+			request = "attach",
+			command = "bundle",
+			commandArgs = function()
+				local args = {
+					"exec",
+					"rdbg",
+					"-n",
+					"--open",
+					"--port",
+					tostring(config.options.minitest_port),
+					"-c",
+					"--",
+					"bin/rails",
+					"test",
+				}
+				local test_cmd = get_args()
+				for _, arg in ipairs(test_cmd) do
+					table.insert(args, arg)
+				end
+				return args
+			end,
+			port = config.options.minitest_port,
+			server = config.options.host,
+			cwd = config.get_rails_root,
+			env = {
+				["RAILS_ENV"] = "test",
+			},
+			localfs = true,
+		}
+	end
+
 	dap.configurations.ruby = {
 		{
 			type = "ruby",
@@ -47,6 +94,15 @@ function M.setup(opts)
 			localfs = true,
 			waiting = 1000,
 		},
+		create_minitest_config("Minitest - Current File", function()
+			local file = vim.fn.expand("%:p")
+			return get_test_command(file)
+		end),
+		create_minitest_config("Minitest - Current Line", function()
+			local file = vim.fn.expand("%:p")
+			local line = vim.fn.line(".")
+			return get_test_command(file, line)
+		end),
 	}
 
 	dap.adapters.ruby = function(callback, config)
@@ -112,6 +168,29 @@ function M.setup(opts)
 	-- Command to debug Solid Queue worker
 	vim.api.nvim_create_user_command("DebugSolidQueueWorker", function()
 		dap.run(dap.configurations.ruby[2])
+	end, {})
+	local function is_port_available(port)
+		local handle = io.popen(string.format("lsof -i :%d", port))
+		local result = handle:read("*a")
+		handle:close()
+		return result == ""
+	end
+
+	vim.api.nvim_create_user_command("DebugMinitestFile", function()
+		if not is_port_available(config.options.minitest_port) then
+			print(
+				"Port "
+					.. config.options.minitest_port
+					.. " is already in use. Please choose a different port or stop the process using this port."
+			)
+			return
+		end
+		dap.run(dap.configurations.ruby[3])
+	end, {})
+
+	vim.api.nvim_create_user_command("DebugMinitestLine", function()
+		local config = dap.configurations.ruby[4] -- Make sure this index is correct
+		dap.run(config)
 	end, {})
 
 	-- Configure DAP UI
