@@ -5,11 +5,11 @@ local M = {}
 local utils = require("nvim-ruby-debugger.utils")
 
 function M.setup(dap, config)
-	vim.api.nvim_create_user_command("DebugRailsServer", function()
+	vim.api.nvim_create_user_command("DebugRails", function()
 		dap.run(dap.configurations.ruby[1])
 	end, {})
 
-	vim.api.nvim_create_user_command("DebugSolidQueueWorker", function()
+	vim.api.nvim_create_user_command("DebugWorker", function()
 		dap.run(dap.configurations.ruby[2])
 	end, {})
 
@@ -26,7 +26,7 @@ function M.setup(dap, config)
 	end, {})
 
 	vim.api.nvim_create_user_command("DebugMinitestLine", function()
-		local config = dap.configurations.ruby[4] -- Make sure this index is correct
+		local config = dap.configurations.ruby[4]
 		dap.run(config)
 	end, {})
 end

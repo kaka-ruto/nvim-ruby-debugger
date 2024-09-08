@@ -47,8 +47,6 @@ function M.setup(opts)
 
 	-- Setup keymaps
 	config.setup_keymaps()
-
-	vim.notify("Ruby debugger setup complete", vim.log.levels.INFO)
 end
 
 return M
