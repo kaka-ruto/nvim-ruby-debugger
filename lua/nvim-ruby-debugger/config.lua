@@ -1,3 +1,5 @@
+-- Configuration for the plugin
+
 local M = {}
 
 M.options = {
